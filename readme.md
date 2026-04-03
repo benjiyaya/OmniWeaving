@@ -58,7 +58,7 @@ Work done during Kaihang Pan's internship at Tencent Hunyuan
 * 📌 OmniWeaving is developed by the **HunyuanVideo** team and is built upon the latest **[HunyuanVideo-1.5](https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5)** as the backbone. If you find our work useful, please consider giving this repository a star and citing our paper~
 * 🚀 April 3, 2026: We release the [code](https://github.com/Tencent-Hunyuan/OmniWeaving) 
 and [model weights](https://huggingface.co/tencent/HY-OmniWeaving) of OmniWeaving.
-* 🚀 April 3, 2026: We release the [IntelligentVBench](https://huggingface.co/datasets/midbee/IntelligentVBench).
+* 🏃‍♂️ April 3, 2026: We release the [IntelligentVBench](https://huggingface.co/datasets/midbee/IntelligentVBench).
 * 📖 Mar 26, 2026: We release the OmniWeaving paper on [Arxiv](https://arxiv.org/abs/2603.24458).
 * 👋 Mar 25, 2026: We release the webpage of [OmniWeaving](https://omniweaving.github.io/).
 
