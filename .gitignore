@@ -168,6 +168,20 @@ logs/
 cache/
 ckpts/
 
+# Wheel files
+*.whl
+
+# Gradio temp
+.gradio_temp/
+
+# Strange files with = prefix
+=0.21.0
+=0.5.3
+=2.3.0
+
+# Text files
+run script.txt
+
 
 hyvideo/utils/rewrite/i2v_env.sh
 

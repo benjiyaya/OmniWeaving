@@ -78,8 +78,8 @@ from hyvideo.utils.multitask_utils import (
     get_cond_latents,
     get_cond_latents2,
     get_cond_latents3,
-    get_semantic_images_np, 
-    get_semantic_images_np2
+    get_semantic_images_np,
+    get_semantic_images_np2,
 )
 from hyvideo.commons.infer_state import InferState
 
@@ -88,13 +88,13 @@ from .pipeline_utils import retrieve_timesteps, rescale_noise_cfg
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 @dataclass
 class HunyuanVideoPipelineOutput(BaseOutput):
     videos: Union[torch.Tensor, np.ndarray]
 
 
 class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
-
     model_cpu_offload_seq = "text_encoder->text_encoder_2->byt5_model->transformer->vae"
     _optional_components = ["text_encoder_2"]
 
@@ -163,7 +163,6 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             self.byt5_model = None
             self.byt5_tokenizer = None
 
-
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.text_len = text_encoder.max_length
@@ -187,8 +186,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             "1080p": {"bucket_hw_base_size": 1440, "bucket_hw_bucket_stride": 16},
         }
 
-        self.noise_init_device = torch.device('cuda')
-
+        self.noise_init_device = torch.device("cuda")
 
     @classmethod
     def _create_scheduler(cls, flow_shift):
@@ -223,31 +221,35 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
 
             byT5_google_path = os.path.join(load_from, "byt5-small")
             if not os.path.exists(byT5_google_path):
-                loguru.logger.warning(f"ByT5 google path not found from: {byT5_google_path}. Try downloading from https://huggingface.co/google/byt5-small.")
+                loguru.logger.warning(
+                    f"ByT5 google path not found from: {byT5_google_path}. Try downloading from https://huggingface.co/google/byt5-small."
+                )
                 byT5_google_path = "google/byt5-small"
 
-
-            multilingual_prompt_format_color_path = os.path.join(glyph_root, "assets/color_idx.json")
-            multilingual_prompt_format_font_path = os.path.join(glyph_root, "assets/multilingual_10-lang_idx.json")
+            multilingual_prompt_format_color_path = os.path.join(
+                glyph_root, "assets/color_idx.json"
+            )
+            multilingual_prompt_format_font_path = os.path.join(
+                glyph_root, "assets/multilingual_10-lang_idx.json"
+            )
 
             byt5_args = dict(
                 byT5_google_path=byT5_google_path,
                 byT5_ckpt_path=os.path.join(glyph_root, "checkpoints/byt5_model.pt"),
                 multilingual_prompt_format_color_path=multilingual_prompt_format_color_path,
                 multilingual_prompt_format_font_path=multilingual_prompt_format_font_path,
-                byt5_max_length=byt5_max_length
+                byt5_max_length=byt5_max_length,
             )
 
             byt5_kwargs = load_glyph_byT5_v2(byt5_args, device=device)
             prompt_format = MultilingualPromptFormat(
                 font_path=multilingual_prompt_format_font_path,
-                color_path=multilingual_prompt_format_color_path
+                color_path=multilingual_prompt_format_color_path,
             )
             return byt5_kwargs, prompt_format
         except Exception as e:
             print(e)
             raise RuntimeError("Error loading byT5 glyph processor") from e
-
 
     def encode_prompt(
         self,
@@ -264,15 +266,15 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         text_encoder: Optional[TextEncoder] = None,
         data_type: Optional[str] = "image",
         # newly added
-        task_type='t2v',
+        task_type="t2v",
         video_sample_frames=None,
         nframes=None,
         semantic_images: Optional[torch.Tensor] = None,
         all_condition_pils=None,
         reference2v_task: bool = True,
-        only_give_text = False,
-        deepstack=[8,16,24],
-        setclip=True
+        only_give_text=False,
+        deepstack=[8, 16, 24],
+        setclip=True,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -317,15 +319,14 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        
+
         if prompt is not None and isinstance(prompt, str):
             prompt = [prompt]
         if negative_prompt is not None and isinstance(negative_prompt, str):
             negative_prompt = [negative_prompt]
 
         if prompt_embeds is None:
-
-            if task_type == 't2v' or task_type == 'i2v':
+            if task_type == "t2v" or task_type == "i2v":
                 semantic_images_pil = semantic_images
                 if semantic_images_pil is not None and only_give_text == False:
                     imgs = semantic_images_pil
@@ -335,24 +336,38 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                         p2 = p.copy()
                         p2.thumbnail((560, 560))
                         newimgs.append(p2)
-                    text_inputs, skip_token_num = text_encoder.prepare_input(prompt, newimgs, prompt_mode=2)
+                    text_inputs, skip_token_num = text_encoder.prepare_input(
+                        prompt, newimgs, prompt_mode=2
+                    )
                     text_inputs = text_inputs.to(device)
                 else:
                     skip_token_num = 108
-                    text_inputs, skip_token_num = text_encoder.prepare_input(prompt, prompt_mode=1)
+                    text_inputs, skip_token_num = text_encoder.prepare_input(
+                        prompt, prompt_mode=1
+                    )
                     text_inputs = text_inputs.to(device)
-                
+
                 prompt_outputs = text_encoder.encode(
-                    text_inputs, data_type=data_type, device=device, deepstack=deepstack, crop_start=skip_token_num, setclip=setclip
+                    text_inputs,
+                    data_type=data_type,
+                    device=device,
+                    deepstack=deepstack,
+                    crop_start=skip_token_num,
+                    setclip=setclip,
                 )
                 prompt_embeds = prompt_outputs.hidden_state
                 deepstack_hidden_states = prompt_outputs.deepstack_hidden_states
-            
-            elif task_type =='editing' or task_type == 'tiv2v':
+
+            elif task_type == "editing" or task_type == "tiv2v":
                 sampled_frames = video_sample_frames
                 if sampled_frames is not None and only_give_text == False:
                     if semantic_images is None:
-                        text_inputs, skip_token_num = text_encoder.prepare_input(prompt, videos=sampled_frames, num_frames=nframes, prompt_mode=5)
+                        text_inputs, skip_token_num = text_encoder.prepare_input(
+                            prompt,
+                            videos=sampled_frames,
+                            num_frames=nframes,
+                            prompt_mode=5,
+                        )
                         text_inputs = text_inputs.to(device)
                     else:
                         newimgs = []
@@ -361,20 +376,33 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                             p2 = p.copy()
                             p2.thumbnail((560, 560))
                             newimgs.append(p2)
-                        text_inputs, skip_token_num = text_encoder.prepare_input(prompt, imgs=newimgs, videos=sampled_frames, num_frames=nframes, prompt_mode=6)
+                        text_inputs, skip_token_num = text_encoder.prepare_input(
+                            prompt,
+                            imgs=newimgs,
+                            videos=sampled_frames,
+                            num_frames=nframes,
+                            prompt_mode=6,
+                        )
                         text_inputs = text_inputs.to(device)
                 else:
                     skip_token_num = 108
-                    text_inputs, skip_token_num = text_encoder.prepare_input(prompt, prompt_mode=1)
+                    text_inputs, skip_token_num = text_encoder.prepare_input(
+                        prompt, prompt_mode=1
+                    )
                     text_inputs = text_inputs.to(device)
-                
+
                 prompt_outputs = text_encoder.encode(
-                    text_inputs, data_type=data_type, device=device, deepstack=deepstack, crop_start=skip_token_num, setclip=setclip
+                    text_inputs,
+                    data_type=data_type,
+                    device=device,
+                    deepstack=deepstack,
+                    crop_start=skip_token_num,
+                    setclip=setclip,
                 )
                 prompt_embeds = prompt_outputs.hidden_state
                 deepstack_hidden_states = prompt_outputs.deepstack_hidden_states
 
-            elif task_type =='interpolation' or task_type == 'reference2v':
+            elif task_type == "interpolation" or task_type == "reference2v":
                 semantic_images_pils = all_condition_pils
                 if semantic_images_pils is not None and only_give_text == False:
                     imgs = semantic_images_pils
@@ -390,19 +418,32 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                             subimgs.append(p2)
                         newimgs.append(subimgs)
                     if reference2v_task:
-                        text_inputs, skip_token_num = text_encoder.prepare_input(prompt, newimgs, prompt_mode=3)
+                        text_inputs, skip_token_num = text_encoder.prepare_input(
+                            prompt, newimgs, prompt_mode=3
+                        )
                         text_inputs = text_inputs.to(device)
-                        assert skip_token_num == 102, f"skip_token_num should be 102, but got {skip_token_num}"
+                        assert skip_token_num == 102, (
+                            f"skip_token_num should be 102, but got {skip_token_num}"
+                        )
                     else:
-                        text_inputs, skip_token_num = text_encoder.prepare_input(prompt, newimgs, prompt_mode=4)
+                        text_inputs, skip_token_num = text_encoder.prepare_input(
+                            prompt, newimgs, prompt_mode=4
+                        )
                         text_inputs = text_inputs.to(device)
                 else:
                     skip_token_num = 108
-                    text_inputs, skip_token_num = text_encoder.prepare_input(prompt, prompt_mode=1)
+                    text_inputs, skip_token_num = text_encoder.prepare_input(
+                        prompt, prompt_mode=1
+                    )
                     text_inputs = text_inputs.to(device)
-                
+
                 prompt_outputs = text_encoder.encode(
-                    text_inputs, data_type=data_type, device=device, deepstack=deepstack, crop_start=skip_token_num, setclip=setclip
+                    text_inputs,
+                    data_type=data_type,
+                    device=device,
+                    deepstack=deepstack,
+                    crop_start=skip_token_num,
+                    setclip=setclip,
                 )
                 prompt_embeds = prompt_outputs.hidden_state
                 deepstack_hidden_states = prompt_outputs.deepstack_hidden_states
@@ -459,7 +500,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             else:
                 uncond_tokens = negative_prompt
 
-            if task_type == 't2v' or task_type == 'i2v':
+            if task_type == "t2v" or task_type == "i2v":
                 semantic_images_pil = semantic_images
                 if semantic_images_pil is not None and only_give_text == False:
                     imgs = semantic_images_pil
@@ -469,26 +510,46 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                         p2 = p.copy()
                         p2.thumbnail((560, 560))
                         newimgs.append(p2)
-                    uncond_input, skip_token_num = text_encoder.prepare_input(uncond_tokens, newimgs, prompt_mode=2)
+                    uncond_input, skip_token_num = text_encoder.prepare_input(
+                        uncond_tokens, newimgs, prompt_mode=2
+                    )
                     uncond_input = uncond_input.to(device)
                 else:
                     skip_token_num = 108
-                    uncond_input, skip_token_num = text_encoder.prepare_input(uncond_tokens, prompt_mode=1)
+                    uncond_input, skip_token_num = text_encoder.prepare_input(
+                        uncond_tokens, prompt_mode=1
+                    )
                     uncond_input = uncond_input.to(device)
-                
+
                 if semantic_images is not None:
-                    uncond_image = [Image.new('RGB', img.size, (0, 0, 0)) for img in semantic_images]
+                    uncond_image = [
+                        Image.new("RGB", img.size, (0, 0, 0)) for img in semantic_images
+                    ]
                 else:
                     uncond_image = None
-                negative_prompt_outputs = text_encoder.encode(uncond_input, data_type=data_type, is_uncond=True, deepstack=deepstack, crop_start=skip_token_num, setclip=setclip)
+                negative_prompt_outputs = text_encoder.encode(
+                    uncond_input,
+                    data_type=data_type,
+                    is_uncond=True,
+                    deepstack=deepstack,
+                    crop_start=skip_token_num,
+                    setclip=setclip,
+                )
                 negative_prompt_embeds = negative_prompt_outputs.hidden_state
-                negative_deepstack_hidden_states = negative_prompt_outputs.deepstack_hidden_states
-            
-            elif task_type =='editing' or task_type == 'tiv2v':
+                negative_deepstack_hidden_states = (
+                    negative_prompt_outputs.deepstack_hidden_states
+                )
+
+            elif task_type == "editing" or task_type == "tiv2v":
                 sampled_frames = video_sample_frames
                 if sampled_frames is not None and only_give_text == False:
                     if semantic_images is None:
-                        uncond_input, skip_token_num = text_encoder.prepare_input(uncond_tokens, videos=sampled_frames, num_frames=nframes, prompt_mode=5)
+                        uncond_input, skip_token_num = text_encoder.prepare_input(
+                            uncond_tokens,
+                            videos=sampled_frames,
+                            num_frames=nframes,
+                            prompt_mode=5,
+                        )
                         uncond_input = uncond_input.to(device)
                     else:
                         newimgs = []
@@ -497,19 +558,36 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                             p2 = p.copy()
                             p2.thumbnail((560, 560))
                             newimgs.append(p2)
-                        uncond_input, skip_token_num = text_encoder.prepare_input(uncond_tokens, imgs=newimgs, videos=sampled_frames, num_frames=nframes, prompt_mode=6)
+                        uncond_input, skip_token_num = text_encoder.prepare_input(
+                            uncond_tokens,
+                            imgs=newimgs,
+                            videos=sampled_frames,
+                            num_frames=nframes,
+                            prompt_mode=6,
+                        )
                         uncond_input = uncond_input.to(device)
                 else:
                     skip_token_num = 108
-                    uncond_input, skip_token_num = text_encoder.prepare_input(uncond_tokens, prompt_mode=1)
+                    uncond_input, skip_token_num = text_encoder.prepare_input(
+                        uncond_tokens, prompt_mode=1
+                    )
                     uncond_input = uncond_input.to(device)
-                
+
                 uncond_image = None
-                negative_prompt_outputs = text_encoder.encode(uncond_input, data_type=data_type, is_uncond=True, deepstack=deepstack, crop_start=skip_token_num, setclip=setclip)
+                negative_prompt_outputs = text_encoder.encode(
+                    uncond_input,
+                    data_type=data_type,
+                    is_uncond=True,
+                    deepstack=deepstack,
+                    crop_start=skip_token_num,
+                    setclip=setclip,
+                )
                 negative_prompt_embeds = negative_prompt_outputs.hidden_state
-                negative_deepstack_hidden_states = negative_prompt_outputs.deepstack_hidden_states
-            
-            elif task_type =='interpolation' or task_type == 'reference2v':
+                negative_deepstack_hidden_states = (
+                    negative_prompt_outputs.deepstack_hidden_states
+                )
+
+            elif task_type == "interpolation" or task_type == "reference2v":
                 semantic_images_pils = all_condition_pils
                 if semantic_images_pils is not None and only_give_text == False:
                     imgs = semantic_images_pils
@@ -525,45 +603,78 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                             subimgs.append(p2)
                         newimgs.append(subimgs)
                     if reference2v_task:
-                        uncond_input, skip_token_num = text_encoder.prepare_input(uncond_tokens, newimgs, prompt_mode=3)
+                        uncond_input, skip_token_num = text_encoder.prepare_input(
+                            uncond_tokens, newimgs, prompt_mode=3
+                        )
                         uncond_input = uncond_input.to(device)
-                        assert skip_token_num == 102, f"skip_token_num should be 102, but got {skip_token_num}"
+                        assert skip_token_num == 102, (
+                            f"skip_token_num should be 102, but got {skip_token_num}"
+                        )
                     else:
-                        uncond_input, skip_token_num = text_encoder.prepare_input(uncond_tokens, newimgs, prompt_mode=4)
+                        uncond_input, skip_token_num = text_encoder.prepare_input(
+                            uncond_tokens, newimgs, prompt_mode=4
+                        )
                         uncond_input = uncond_input.to(device)
                 else:
                     skip_token_num = 108
-                    uncond_input, skip_token_num = text_encoder.prepare_input(uncond_tokens, prompt_mode=1)
+                    uncond_input, skip_token_num = text_encoder.prepare_input(
+                        uncond_tokens, prompt_mode=1
+                    )
                     uncond_input = uncond_input.to(device)
-                
+
                 uncond_image = None
 
-                negative_prompt_outputs = text_encoder.encode(uncond_input, data_type=data_type, is_uncond=True, deepstack=deepstack, crop_start=skip_token_num, setclip=setclip)
+                negative_prompt_outputs = text_encoder.encode(
+                    uncond_input,
+                    data_type=data_type,
+                    is_uncond=True,
+                    deepstack=deepstack,
+                    crop_start=skip_token_num,
+                    setclip=setclip,
+                )
                 negative_prompt_embeds = negative_prompt_outputs.hidden_state
-                negative_deepstack_hidden_states = negative_prompt_outputs.deepstack_hidden_states
-
+                negative_deepstack_hidden_states = (
+                    negative_prompt_outputs.deepstack_hidden_states
+                )
 
             negative_attention_mask = negative_prompt_outputs.attention_mask
             if negative_attention_mask is not None:
                 negative_attention_mask = negative_attention_mask.to(device)
                 _, seq_len = negative_attention_mask.shape
-                negative_attention_mask = negative_attention_mask.repeat(1, num_videos_per_prompt)
-                negative_attention_mask = negative_attention_mask.view(batch_size * num_videos_per_prompt, seq_len)
+                negative_attention_mask = negative_attention_mask.repeat(
+                    1, num_videos_per_prompt
+                )
+                negative_attention_mask = negative_attention_mask.view(
+                    batch_size * num_videos_per_prompt, seq_len
+                )
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(
+                dtype=prompt_embeds_dtype, device=device
+            )
 
             if negative_prompt_embeds.ndim == 2:
-                negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt)
-                negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, -1)
+                negative_prompt_embeds = negative_prompt_embeds.repeat(
+                    1, num_videos_per_prompt
+                )
+                negative_prompt_embeds = negative_prompt_embeds.view(
+                    batch_size * num_videos_per_prompt, -1
+                )
             else:
-                negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-                negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
-        
-        if deepstack_hidden_states is not None or negative_deepstack_hidden_states is not None:
+                negative_prompt_embeds = negative_prompt_embeds.repeat(
+                    1, num_videos_per_prompt, 1
+                )
+                negative_prompt_embeds = negative_prompt_embeds.view(
+                    batch_size * num_videos_per_prompt, seq_len, -1
+                )
+
+        if (
+            deepstack_hidden_states is not None
+            or negative_deepstack_hidden_states is not None
+        ):
             assert num_videos_per_prompt == 1
 
         return (
@@ -572,9 +683,8 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             attention_mask,
             negative_attention_mask,
             deepstack_hidden_states,
-            negative_deepstack_hidden_states
+            negative_deepstack_hidden_states,
         )
-
 
     def prepare_extra_func_kwargs(self, func, kwargs):
         """
@@ -590,7 +700,6 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             if accepts:
                 extra_step_kwargs[k] = v
         return extra_step_kwargs
-
 
     def prepare_latents(
         self,
@@ -635,7 +744,9 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            latents = torch.randn(shape, generator=generator, device=self.noise_init_device, dtype=dtype).to(device)
+            latents = torch.randn(
+                shape, generator=generator, device=self.noise_init_device, dtype=dtype
+            ).to(device)
         else:
             latents = latents.to(device)
 
@@ -746,7 +857,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         Returns:
             List[str]: List of extracted glyph texts (deduplicated if multiple).
         """
-        pattern = r'\"(.*?)\"|“(.*?)”'
+        pattern = r"\"(.*?)\"|“(.*?)”"
         matches = re.findall(pattern, prompt)
         result = [match[0] or match[1] for match in matches]
         result = list(dict.fromkeys(result)) if len(result) > 1 else result
@@ -766,24 +877,28 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                 - byt5_mask: Attention mask tensor.
         """
         byt5_embeddings = torch.zeros((1, self.byt5_max_length, 1472), device=device)
-        byt5_mask = torch.zeros((1, self.byt5_max_length), device=device, dtype=torch.int64)
-        
+        byt5_mask = torch.zeros(
+            (1, self.byt5_max_length), device=device, dtype=torch.int64
+        )
+
         glyph_texts = self._extract_glyph_texts(prompt_text)
-        
+
         if len(glyph_texts) > 0:
-            text_styles = [{'color': None, 'font-family': None} for _ in range(len(glyph_texts))]
+            text_styles = [
+                {"color": None, "font-family": None} for _ in range(len(glyph_texts))
+            ]
             formatted_text = self.prompt_format.format_prompt(glyph_texts, text_styles)
-            
+
             text_ids, text_mask = self.get_byt5_text_tokens(
                 self.byt5_tokenizer, self.byt5_max_length, formatted_text
             )
             text_ids = text_ids.to(device=device)
             text_mask = text_mask.to(device=device)
-            
+
             byt5_outputs = self.byt5_model(text_ids, attention_mask=text_mask.float())
             byt5_embeddings = byt5_outputs[0]
             byt5_mask = text_mask
-            
+
         return byt5_embeddings, byt5_mask
 
     def _prepare_byt5_embeddings(self, prompts, device):
@@ -802,7 +917,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         """
         if not self.config.glyph_byT5_v2:
             return {}
-            
+
         if isinstance(prompts, str):
             prompt_list = [prompts]
         elif isinstance(prompts, list):
@@ -827,27 +942,24 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
 
         byt5_positive = torch.cat(positive_embeddings, dim=0)
         byt5_positive_mask = torch.cat(positive_masks, dim=0)
-        
+
         if self.do_classifier_free_guidance:
             byt5_negative = torch.cat(negative_embeddings, dim=0)
             byt5_negative_mask = torch.cat(negative_masks, dim=0)
-            
+
             byt5_embeddings = torch.cat([byt5_negative, byt5_positive], dim=0)
             byt5_masks = torch.cat([byt5_negative_mask, byt5_positive_mask], dim=0)
         else:
             byt5_embeddings = byt5_positive
             byt5_masks = byt5_positive_mask
 
-        return {
-            "byt5_text_states": byt5_embeddings,
-            "byt5_text_mask": byt5_masks
-        }
+        return {"byt5_text_states": byt5_embeddings, "byt5_text_mask": byt5_masks}
 
     def activate_think_to_rewrite_prompt(
         self,
         prompt,
         device,
-        task_type='t2v',
+        task_type="t2v",
         semantic_images=None,
         condition_images=None,
         only_give_text=False,
@@ -894,22 +1006,28 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         ar_images = None
         extra_kwargs = {}
 
-        assert task_type in ('i2v', 't2v', 'interpolation'), 'we recommend to activate the thinking mode of OmniWeaving for i2v, t2v, or interpolation tasks'
+        assert task_type in ("i2v", "t2v", "interpolation"), (
+            "we recommend to activate the thinking mode of OmniWeaving for i2v, t2v, or interpolation tasks"
+        )
 
-        if task_type in ('i2v',):
+        if task_type in ("i2v",):
             expand_prefix = "Here is a concise description of the target video starting with the given image: "
             expand_postfix = " Please generate a more detailed description based on the provided image and the short description."
             if semantic_images is not None and not only_give_text:
                 prompt_mode = 2
                 ar_images = []
-                imgs = semantic_images if isinstance(semantic_images, list) else [semantic_images]
+                imgs = (
+                    semantic_images
+                    if isinstance(semantic_images, list)
+                    else [semantic_images]
+                )
                 for p in imgs:
                     p2 = p.copy()
                     p2.thumbnail((560, 560))
                     ar_images.append(p2)
             else:
                 prompt_mode = 2
-        elif task_type in ('interpolation',):
+        elif task_type in ("interpolation",):
             expand_prefix = "Here is a concise description of how the video transitions from the first image to the second image: "
             expand_postfix = " Please generate a more detailed description of the transition, based on the provided images and the short description."
             if condition_images is not None and not only_give_text:
@@ -926,7 +1044,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                     ar_images.append(subimgs)
             else:
                 prompt_mode = 4
-        else:  
+        else:
             expand_prefix = "Here is a concise description of the target video: "
             expand_postfix = " Please generate a more detailed description based on the short description."
             prompt_mode = 1
@@ -936,7 +1054,8 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         # ---- prepare input with add_generation_prompt=True for AR ----
         if ar_images is not None:
             ar_inputs, _ = text_encoder.prepare_input(
-                prompt_list, ar_images,
+                prompt_list,
+                ar_images,
                 prompt_mode=prompt_mode,
                 add_generation_prompt=True,
                 **extra_kwargs,
@@ -966,9 +1085,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         valid_lens = attention_mask.sum(dim=1).tolist()
         trimmed_lens = [max(0, int(v)) for v in valid_lens]
         max_len = max(trimmed_lens) if trimmed_lens else 0
-        new_input_ids = input_ids.new_full(
-            (input_ids.shape[0], max_len), pad_token_id
-        )
+        new_input_ids = input_ids.new_full((input_ids.shape[0], max_len), pad_token_id)
         new_attention_mask = attention_mask.new_zeros(
             (attention_mask.shape[0], max_len)
         )
@@ -1007,14 +1124,16 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         with torch.no_grad():
             generated = model.generate(**gen_inputs, **gen_kwargs)
 
-        gen_tokens = generated[0, int(prompt_lens[0]):]
+        gen_tokens = generated[0, int(prompt_lens[0]) :]
         generated_text = text_encoder.tokenizer.decode(
             gen_tokens, skip_special_tokens=True
         ).strip()
 
         # Return formatted prompt: original prompt + detailed description
         if generated_text:
-            result = f"{base_prompt} Here is a more detailed description. {generated_text}"
+            result = (
+                f"{base_prompt} Here is a more detailed description. {generated_text}"
+            )
         else:
             result = base_prompt
 
@@ -1039,7 +1158,9 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
 
         return image_encoder_output
 
-    def _prepare_vision_states(self, reference_image, target_resolution, latents, device, reference_image2=None):
+    def _prepare_vision_states(
+        self, reference_image, target_resolution, latents, device, reference_image2=None
+    ):
         """
         Prepare vision states for multitask training.
 
@@ -1054,7 +1175,9 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             torch.Tensor or None: Vision states tensor or None if vision encoder is unavailable.
         """
         vision_states = torch.zeros(
-            latents.shape[0], self.config.vision_num_semantic_tokens, self.config.vision_states_dim
+            latents.shape[0],
+            self.config.vision_num_semantic_tokens,
+            self.config.vision_states_dim,
         ).to(latents.device)
         if reference_image is not None:
             if isinstance(reference_image, list):
@@ -1067,61 +1190,99 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                         semantic_images = list(item)
 
                 if len(semantic_images) > 0:
-                    first_image = np.array(semantic_images[0]) if isinstance(semantic_images[0], Image.Image) else semantic_images[0]
+                    first_image = (
+                        np.array(semantic_images[0])
+                        if isinstance(semantic_images[0], Image.Image)
+                        else semantic_images[0]
+                    )
                     if len(first_image.shape) == 4:
                         first_image = first_image[0]
-                    height, width = self.get_closest_resolution_given_reference_image(first_image, target_resolution)
+                    height, width = self.get_closest_resolution_given_reference_image(
+                        first_image, target_resolution
+                    )
 
                     if self.vision_encoder is not None:
                         vision_states_list = []
                         for semantic_image in semantic_images:
-                            semantic_image = np.array(semantic_image) if isinstance(semantic_image, Image.Image) else semantic_image
+                            semantic_image = (
+                                np.array(semantic_image)
+                                if isinstance(semantic_image, Image.Image)
+                                else semantic_image
+                            )
                             if len(semantic_image.shape) == 4:
                                 semantic_image = semantic_image[0]
-                            input_image_np = resize_and_center_crop(semantic_image, target_width=width, target_height=height)
-                            image_encoder_output = self.vision_encoder.encode_images(input_image_np)
-                            image_vision_states = image_encoder_output.last_hidden_state.to(device=device, dtype=self.target_dtype)
+                            input_image_np = resize_and_center_crop(
+                                semantic_image, target_width=width, target_height=height
+                            )
+                            image_encoder_output = self.vision_encoder.encode_images(
+                                input_image_np
+                            )
+                            image_vision_states = (
+                                image_encoder_output.last_hidden_state.to(
+                                    device=device, dtype=self.target_dtype
+                                )
+                            )
                             vision_states_list.append(image_vision_states)
                         vision_states = torch.stack(vision_states_list, dim=0)
                         vision_states = torch.mean(vision_states, dim=0)
                     else:
                         vision_states = None
             else:
-                reference_image = np.array(reference_image) if isinstance(reference_image, Image.Image) else reference_image
+                reference_image = (
+                    np.array(reference_image)
+                    if isinstance(reference_image, Image.Image)
+                    else reference_image
+                )
                 if len(reference_image.shape) == 4:
                     reference_image = reference_image[0]
 
-                height, width = self.get_closest_resolution_given_reference_image(reference_image, target_resolution)
+                height, width = self.get_closest_resolution_given_reference_image(
+                    reference_image, target_resolution
+                )
 
                 # Encode reference image to vision states
                 if self.vision_encoder is not None:
-                    input_image_np = resize_and_center_crop(reference_image, target_width=width, target_height=height)
+                    input_image_np = resize_and_center_crop(
+                        reference_image, target_width=width, target_height=height
+                    )
                     vision_states = self.vision_encoder.encode_images(input_image_np)
-                    vision_states = vision_states.last_hidden_state.to(device=device, dtype=self.target_dtype)
+                    vision_states = vision_states.last_hidden_state.to(
+                        device=device, dtype=self.target_dtype
+                    )
                 else:
                     vision_states = None
 
         if reference_image2 is not None:
-            reference_image2 = np.array(reference_image2) if isinstance(reference_image2, Image.Image) else reference_image2
+            reference_image2 = (
+                np.array(reference_image2)
+                if isinstance(reference_image2, Image.Image)
+                else reference_image2
+            )
             if len(reference_image2.shape) == 4:
                 reference_image2 = reference_image2[0]
 
-            height2, width2 = self.get_closest_resolution_given_reference_image(reference_image2, target_resolution)
+            height2, width2 = self.get_closest_resolution_given_reference_image(
+                reference_image2, target_resolution
+            )
 
             if self.vision_encoder is not None:
-                input_image_np2 = resize_and_center_crop(reference_image2, target_width=width2, target_height=height2)
+                input_image_np2 = resize_and_center_crop(
+                    reference_image2, target_width=width2, target_height=height2
+                )
                 vision_states2 = self.vision_encoder.encode_images(input_image_np2)
-                vision_states2 = vision_states2.last_hidden_state.to(device=device, dtype=self.target_dtype)
+                vision_states2 = vision_states2.last_hidden_state.to(
+                    device=device, dtype=self.target_dtype
+                )
             else:
                 vision_states2 = None
 
             if vision_states2 is not None and vision_states is not None:
                 vision_states = (vision_states + vision_states2) / 2.0
-        
+
         # Repeat image features for batch size if needed (for classifier-free guidance)
         if self.do_classifier_free_guidance and vision_states is not None:
             vision_states = vision_states.repeat(2, 1, 1)
-        
+
         return vision_states
 
     def _prepare_cond_latents(self, task_type, cond_latents, latents, multitask_mask):
@@ -1142,15 +1303,23 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         if cond_latents is not None and task_type == "i2v":
             latents_concat = cond_latents.repeat(1, 1, latents.shape[2], 1, 1)
             latents_concat[:, :, 1:, :, :] = 0.0
-        elif task_type in {"editing", "tiv2v", 'interpolation', 'reference2v'}:
+        elif task_type in {"editing", "tiv2v", "interpolation", "reference2v"}:
             latents_concat = cond_latents
         else:
             latents_concat = torch.zeros(
-                latents.shape[0], latents.shape[1], latents.shape[2], latents.shape[3], latents.shape[4]
+                latents.shape[0],
+                latents.shape[1],
+                latents.shape[2],
+                latents.shape[3],
+                latents.shape[4],
             ).to(latents.device)
 
-        mask_zeros = torch.zeros(latents.shape[0], 1, latents.shape[2], latents.shape[3], latents.shape[4])
-        mask_ones = torch.ones(latents.shape[0], 1, latents.shape[2], latents.shape[3], latents.shape[4])
+        mask_zeros = torch.zeros(
+            latents.shape[0], 1, latents.shape[2], latents.shape[3], latents.shape[4]
+        )
+        mask_ones = torch.ones(
+            latents.shape[0], 1, latents.shape[2], latents.shape[3], latents.shape[4]
+        )
         if len(multitask_mask.shape) <= 1:
             if multitask_mask.shape[0] != 2 * latents.shape[2]:
                 mask_concat = merge_tensor_by_mask(
@@ -1158,10 +1327,16 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                 ).to(device=latents.device)
             else:
                 mask_concat1 = merge_tensor_by_mask(
-                    mask_zeros.cpu(), mask_ones.cpu(), mask=multitask_mask[: latents.shape[2]].cpu(), dim=2
+                    mask_zeros.cpu(),
+                    mask_ones.cpu(),
+                    mask=multitask_mask[: latents.shape[2]].cpu(),
+                    dim=2,
                 ).to(device=latents.device)
                 mask_concat2 = merge_tensor_by_mask(
-                    mask_zeros.cpu(), mask_ones.cpu(), mask=multitask_mask[latents.shape[2] :].cpu(), dim=2
+                    mask_zeros.cpu(),
+                    mask_ones.cpu(),
+                    mask=multitask_mask[latents.shape[2] :].cpu(),
+                    dim=2,
                 ).to(device=latents.device)
                 mask_concat = torch.add(mask_concat1, mask_concat2)
         else:
@@ -1181,7 +1356,9 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             raise ValueError(f"{task_type} is not supported !")
         return mask
 
-    def get_closest_resolution_given_reference_image(self, reference_image, target_resolution):
+    def get_closest_resolution_given_reference_image(
+        self, reference_image, target_resolution
+    ):
         """
         Get closest supported resolution for a reference image.
 
@@ -1200,10 +1377,13 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             H, W, C = reference_image.shape
             origin_size = (W, H)
         else:
-            raise ValueError(f"Unsupported reference_image type: {type(reference_image)}. Must be PIL Image or numpy array")
+            raise ValueError(
+                f"Unsupported reference_image type: {type(reference_image)}. Must be PIL Image or numpy array"
+            )
 
-        return self.get_closest_resolution_given_original_size(origin_size, target_resolution)
-
+        return self.get_closest_resolution_given_original_size(
+            origin_size, target_resolution
+        )
 
     def get_closest_resolution_given_original_size(self, origin_size, target_size):
         """
@@ -1216,15 +1396,26 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         Returns:
             tuple[int, int]: (height, width) of closest supported resolution.
         """
-        bucket_hw_base_size = self.target_size_config[target_size]["bucket_hw_base_size"]
-        bucket_hw_bucket_stride = self.target_size_config[target_size]["bucket_hw_bucket_stride"]
+        bucket_hw_base_size = self.target_size_config[target_size][
+            "bucket_hw_base_size"
+        ]
+        bucket_hw_bucket_stride = self.target_size_config[target_size][
+            "bucket_hw_bucket_stride"
+        ]
 
-        assert bucket_hw_base_size in [128, 256, 480, 512, 640, 720, 960, 1440], \
+        assert bucket_hw_base_size in [128, 256, 480, 512, 640, 720, 960, 1440], (
             f"bucket_hw_base_size must be in [128, 256, 480, 512, 640, 720, 960, 1440], but got {bucket_hw_base_size}"
+        )
 
-        crop_size_list = generate_crop_size_list(bucket_hw_base_size, bucket_hw_bucket_stride)
-        aspect_ratios = np.array([round(float(h) / float(w), 5) for h, w in crop_size_list])
-        closest_size, closest_ratio = get_closest_ratio(origin_size[1], origin_size[0], aspect_ratios, crop_size_list)
+        crop_size_list = generate_crop_size_list(
+            bucket_hw_base_size, bucket_hw_bucket_stride
+        )
+        aspect_ratios = np.array(
+            [round(float(h) / float(w), 5) for h, w in crop_size_list]
+        )
+        closest_size, closest_ratio = get_closest_ratio(
+            origin_size[1], origin_size[0], aspect_ratios, crop_size_list
+        )
 
         height = closest_size[0]
         width = closest_size[1]
@@ -1249,12 +1440,17 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         spatial_compression_ratio = self.vae_spatial_compression_ratio
         temporal_compression_ratio = self.vae_temporal_compression_ratio
         video_length = (video_length - 1) // temporal_compression_ratio + 1
-        height, width = height // spatial_compression_ratio, width // spatial_compression_ratio
+        height, width = (
+            height // spatial_compression_ratio,
+            width // spatial_compression_ratio,
+        )
 
-        assert height > 0 and width > 0 and video_length > 0, f"height: {height}, width: {width}, video_length: {video_length}"
+        assert height > 0 and width > 0 and video_length > 0, (
+            f"height: {height}, width: {width}, video_length: {video_length}"
+        )
 
         return video_length, height, width
-    
+
     def get_task_specific_input(
         self,
         prompt,
@@ -1262,17 +1458,18 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         condition_videos=None,
         condition_video_latents=None,
         ref_image_paths=None,
-
         video_length=None,
         aspect_ratio=None,
         target_resolution=None,
-        device = '',
-    ):  
+        device="",
+    ):
         if video_length is not None:
-            latent_target_length = (video_length - 1) // self.vae_temporal_compression_ratio + 1
+            latent_target_length = (
+                video_length - 1
+            ) // self.vae_temporal_compression_ratio + 1
         else:
             latent_target_length = None
-        
+
         semantic_images = None
         condition_images = None
         cond_latents = None
@@ -1281,48 +1478,76 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         video_sample_frames = None
 
         if task_type == "i2v":
-            ref_images = [Image.open(image_path).convert('RGB') for image_path in ref_image_paths if image_path is not None]
+            ref_images = [
+                Image.open(image_path).convert("RGB")
+                for image_path in ref_image_paths
+                if image_path is not None
+            ]
             origin_size = ref_images[0].size
-            height, width = self.get_closest_resolution_given_original_size(origin_size, target_resolution)
+            height, width = self.get_closest_resolution_given_original_size(
+                origin_size, target_resolution
+            )
 
             original_width, original_height = origin_size
             target_height, target_width = height, width
-            scale_factor = max(target_width / original_width, target_height / original_height)
+            scale_factor = max(
+                target_width / original_width, target_height / original_height
+            )
             resize_width = int(round(original_width * scale_factor))
             resize_height = int(round(original_height * scale_factor))
 
-            ref_image_transform = transforms.Compose([
-                transforms.Resize((resize_height, resize_width),
-                                    interpolation=transforms.InterpolationMode.LANCZOS),
-                transforms.CenterCrop((target_height, target_width)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5])
-            ])
+            ref_image_transform = transforms.Compose(
+                [
+                    transforms.Resize(
+                        (resize_height, resize_width),
+                        interpolation=transforms.InterpolationMode.LANCZOS,
+                    ),
+                    transforms.CenterCrop((target_height, target_width)),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.5], [0.5]),
+                ]
+            )
 
-            ref_images_pixel_values = [ref_image_transform(ref_image) for ref_image in ref_images]
-            ref_images_pixel_values = torch.cat(ref_images_pixel_values).unsqueeze(0).unsqueeze(2).to(device)
+            ref_images_pixel_values = [
+                ref_image_transform(ref_image) for ref_image in ref_images
+            ]
+            ref_images_pixel_values = (
+                torch.cat(ref_images_pixel_values).unsqueeze(0).unsqueeze(2).to(device)
+            )
             with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=True):
                 cond_latents = self.vae.encode(
-                    ref_images_pixel_values).latent_dist.mode()  # B, C, F, H, W
+                    ref_images_pixel_values
+                ).latent_dist.mode()  # B, C, F, H, W
                 cond_latents.mul_(self.vae.config.scaling_factor)
 
             latents = cond_latents.repeat(1, 1, latent_target_length, 1, 1)
-            cond_latents, semantic_images_np, semantic_images_pil = get_cond_latents(latents, self.vae)
+            cond_latents, semantic_images_np, semantic_images_pil = get_cond_latents(
+                latents, self.vae
+            )
 
-            semantic_images=semantic_images_pil
-            reference_image=semantic_images_np
-            reference_image2=None
-            video_sample_frames=None
-            condition_images=None
+            semantic_images = semantic_images_pil
+            reference_image = semantic_images_np
+            reference_image2 = None
+            video_sample_frames = None
+            condition_images = None
 
-        elif task_type == 't2v':
+        elif task_type == "t2v":
             if aspect_ratio is None:
                 raise ValueError("aspect_ratio is required for t2v task")
             if ":" not in aspect_ratio:
-                raise ValueError("aspect_ratio must be separated by a colon, e.g. '16:9'")
+                raise ValueError(
+                    "aspect_ratio must be separated by a colon, e.g. '16:9'"
+                )
             ar_w, ar_h = aspect_ratio.split(":")
-            if not ar_w.isdigit() or not ar_h.isdigit() or int(ar_w) <= 0 or int(ar_h) <= 0:
-                raise ValueError("width and height must be positive integers in aspect_ratio")
+            if (
+                not ar_w.isdigit()
+                or not ar_h.isdigit()
+                or int(ar_w) <= 0
+                or int(ar_h) <= 0
+            ):
+                raise ValueError(
+                    "width and height must be positive integers in aspect_ratio"
+                )
             height, width = self.get_closest_resolution_given_original_size(
                 (int(ar_w), int(ar_h)), target_resolution
             )
@@ -1330,81 +1555,124 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             cond_latents = None
             semantic_images_np = None
             semantic_images_pil = None
-            reference_image2=None
-            video_sample_frames=None
-            condition_images=None
+            reference_image2 = None
+            video_sample_frames = None
+            condition_images = None
 
-        elif task_type in ('interpolation', 'reference2v'):
+        elif task_type in ("interpolation", "reference2v"):
             assert len(ref_image_paths) == 1
             ref_image_paths = ref_image_paths[0]
 
-            ref_images = [Image.open(image_path).convert('RGB') for image_path in ref_image_paths if image_path is not None]
+            ref_images = [
+                Image.open(image_path).convert("RGB")
+                for image_path in ref_image_paths
+                if image_path is not None
+            ]
             origin_size = ref_images[0].size
-            height, width = self.get_closest_resolution_given_original_size(origin_size, target_resolution)
+            height, width = self.get_closest_resolution_given_original_size(
+                origin_size, target_resolution
+            )
             target_height, target_width = height, width
 
             def _resize_and_center_crop(frame):
                 original_width, original_height = frame.size
-                scale_factor = max(target_width / original_width, target_height / original_height)
+                scale_factor = max(
+                    target_width / original_width, target_height / original_height
+                )
                 resize_width = int(round(original_width * scale_factor))
                 resize_height = int(round(original_height * scale_factor))
-                resize_transform = transforms.Compose([
-                    transforms.Resize((resize_height, resize_width),
-                                        interpolation=transforms.InterpolationMode.LANCZOS),
-                    transforms.CenterCrop((target_height, target_width)),
-                ])
+                resize_transform = transforms.Compose(
+                    [
+                        transforms.Resize(
+                            (resize_height, resize_width),
+                            interpolation=transforms.InterpolationMode.LANCZOS,
+                        ),
+                        transforms.CenterCrop((target_height, target_width)),
+                    ]
+                )
                 return resize_transform(frame)
 
-
-            all_condition_pils = [_resize_and_center_crop(ref_image) for ref_image in ref_images]
+            all_condition_pils = [
+                _resize_and_center_crop(ref_image) for ref_image in ref_images
+            ]
             all_condition_pils = [all_condition_pils]
 
             with torch.no_grad():
-                if task_type == 'interpolation':
-                    cond_latents, semantic_images_np_list, semantic_images_pil_list = get_cond_latents3(all_condition_pils, self.vae, F=latent_target_length)
+                if task_type == "interpolation":
+                    cond_latents, semantic_images_np_list, semantic_images_pil_list = (
+                        get_cond_latents3(
+                            all_condition_pils, self.vae, F=latent_target_length
+                        )
+                    )
                 else:
-                    cond_latents, semantic_images_np_list, semantic_images_pil_list = get_cond_latents2(all_condition_pils, self.vae, F=latent_target_length)
-            
-            condition_images=semantic_images_pil_list
-            semantic_images=None
-            reference_image=semantic_images_np_list
-            reference_image2=None
-            video_sample_frames=None
+                    cond_latents, semantic_images_np_list, semantic_images_pil_list = (
+                        get_cond_latents2(
+                            all_condition_pils, self.vae, F=latent_target_length
+                        )
+                    )
 
-        elif task_type == 'editing' or task_type == 'tiv2v':
-            num_video_frames = (condition_video_latents.shape[2]-1) * 4 + 1
+            condition_images = semantic_images_pil_list
+            semantic_images = None
+            reference_image = semantic_images_np_list
+            reference_image2 = None
+            video_sample_frames = None
+
+        elif task_type == "editing" or task_type == "tiv2v":
+            num_video_frames = (condition_video_latents.shape[2] - 1) * 4 + 1
             if num_video_frames >= 24 * 4:
                 nframes = 8
             elif num_video_frames >= 24 * 3:
                 nframes = 6
             else:
                 nframes = 4
-            
-            if task_type == 'tiv2v':
+
+            if task_type == "tiv2v":
                 cond_latents = condition_video_latents.to(device)
-                video_length = (condition_video_latents.shape[2] - 1) * self.vae_temporal_compression_ratio + 1
+                video_length = (
+                    condition_video_latents.shape[2] - 1
+                ) * self.vae_temporal_compression_ratio + 1
                 vae_scale_factor = self.vae_spatial_compression_ratio
                 height = int(cond_latents.shape[-2] * vae_scale_factor)
                 width = int(cond_latents.shape[-1] * vae_scale_factor)
 
-                condition_images = [Image.open(condition_img_path).convert("RGB") for condition_img_path in ref_image_paths]
+                condition_images = [
+                    Image.open(condition_img_path).convert("RGB")
+                    for condition_img_path in ref_image_paths
+                ]
                 target_height, target_width = height, width
                 # Resize to cover the target size, then center crop.
                 resized_images = []
                 for _img in condition_images:
                     original_width, original_height = _img.size
-                    scale_factor = max(target_width / original_width, target_height / original_height)
+                    scale_factor = max(
+                        target_width / original_width, target_height / original_height
+                    )
                     resize_width = int(round(original_width * scale_factor))
                     resize_height = int(round(original_height * scale_factor))
-                    resize_transform = transforms.Compose([
-                        transforms.Resize((resize_height, resize_width),
-                                            interpolation=transforms.InterpolationMode.LANCZOS),
-                        transforms.CenterCrop((target_height, target_width)),
-                    ])
+                    resize_transform = transforms.Compose(
+                        [
+                            transforms.Resize(
+                                (resize_height, resize_width),
+                                interpolation=transforms.InterpolationMode.LANCZOS,
+                            ),
+                            transforms.CenterCrop((target_height, target_width)),
+                        ]
+                    )
                     resized_images.append(resize_transform(_img))
                 condition_images = resized_images
 
-                semantic_images_np, sampled_frames, cond_latents_img, input_img_pil_np = get_semantic_images_np2(video_path_list=condition_videos, first_image_pil=condition_images, vae=self.vae, F=condition_video_latents.shape[2], nframes=nframes)
+                (
+                    semantic_images_np,
+                    sampled_frames,
+                    cond_latents_img,
+                    input_img_pil_np,
+                ) = get_semantic_images_np2(
+                    video_path_list=condition_videos,
+                    first_image_pil=condition_images,
+                    vae=self.vae,
+                    F=condition_video_latents.shape[2],
+                    nframes=nframes,
+                )
                 cond_latents = cond_latents + cond_latents_img
 
                 if sampled_frames is not None:
@@ -1412,14 +1680,21 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
 
                     def _resize_and_center_crop(frame):
                         original_width, original_height = frame.size
-                        scale_factor = max(target_width / original_width, target_height / original_height)
+                        scale_factor = max(
+                            target_width / original_width,
+                            target_height / original_height,
+                        )
                         resize_width = int(round(original_width * scale_factor))
                         resize_height = int(round(original_height * scale_factor))
-                        resize_transform = transforms.Compose([
-                            transforms.Resize((resize_height, resize_width),
-                                                interpolation=transforms.InterpolationMode.LANCZOS),
-                            transforms.CenterCrop((target_height, target_width)),
-                        ])
+                        resize_transform = transforms.Compose(
+                            [
+                                transforms.Resize(
+                                    (resize_height, resize_width),
+                                    interpolation=transforms.InterpolationMode.LANCZOS,
+                                ),
+                                transforms.CenterCrop((target_height, target_width)),
+                            ]
+                        )
                         return resize_transform(frame)
 
                     resized_frames = []
@@ -1427,33 +1702,42 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                         if frame_list is None:
                             resized_frames.append(frame_list)
                             continue
-                        resized_frames.append([
-                            _resize_and_center_crop(frame)
-                            for frame in frame_list
-                        ])
+                        resized_frames.append(
+                            [_resize_and_center_crop(frame) for frame in frame_list]
+                        )
                     sampled_frames = resized_frames
-                
+
                 if semantic_images_np is not None:
-                    semantic_images_np = np.stack([
-                        resize_and_center_crop(image, width, height)
-                        for image in semantic_images_np
-                    ], axis=0)
+                    semantic_images_np = np.stack(
+                        [
+                            resize_and_center_crop(image, width, height)
+                            for image in semantic_images_np
+                        ],
+                        axis=0,
+                    )
 
                 semantic_images = condition_images
                 reference_image2 = None
                 if input_img_pil_np is not None:
-                    reference_image2 = np.stack([
-                        resize_and_center_crop(image, width, height)
-                        for image in input_img_pil_np
-                    ], axis=0)
+                    reference_image2 = np.stack(
+                        [
+                            resize_and_center_crop(image, width, height)
+                            for image in input_img_pil_np
+                        ],
+                        axis=0,
+                    )
                 condition_images = None
                 reference_image = semantic_images_np
-                video_sample_frames=sampled_frames
-            
+                video_sample_frames = sampled_frames
+
             else:
-                semantic_images_np, sampled_frames = get_semantic_images_np(condition_videos, nframes=nframes)
+                semantic_images_np, sampled_frames = get_semantic_images_np(
+                    condition_videos, nframes=nframes
+                )
                 cond_latents = condition_video_latents.to(device)
-                video_length = (condition_video_latents.shape[2] - 1) * self.vae_temporal_compression_ratio + 1
+                video_length = (
+                    condition_video_latents.shape[2] - 1
+                ) * self.vae_temporal_compression_ratio + 1
                 vae_scale_factor = self.vae_spatial_compression_ratio
                 height = int(cond_latents.shape[-2] * vae_scale_factor)
                 width = int(cond_latents.shape[-1] * vae_scale_factor)
@@ -1463,14 +1747,21 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
 
                     def _resize_and_center_crop(frame):
                         original_width, original_height = frame.size
-                        scale_factor = max(target_width / original_width, target_height / original_height)
+                        scale_factor = max(
+                            target_width / original_width,
+                            target_height / original_height,
+                        )
                         resize_width = int(round(original_width * scale_factor))
                         resize_height = int(round(original_height * scale_factor))
-                        resize_transform = transforms.Compose([
-                            transforms.Resize((resize_height, resize_width),
-                                                interpolation=transforms.InterpolationMode.LANCZOS),
-                            transforms.CenterCrop((target_height, target_width)),
-                        ])
+                        resize_transform = transforms.Compose(
+                            [
+                                transforms.Resize(
+                                    (resize_height, resize_width),
+                                    interpolation=transforms.InterpolationMode.LANCZOS,
+                                ),
+                                transforms.CenterCrop((target_height, target_width)),
+                            ]
+                        )
                         return resize_transform(frame)
 
                     resized_frames = []
@@ -1478,32 +1769,38 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                         if frame_list is None:
                             resized_frames.append(frame_list)
                             continue
-                        resized_frames.append([
-                            _resize_and_center_crop(frame)
-                            for frame in frame_list
-                        ])
+                        resized_frames.append(
+                            [_resize_and_center_crop(frame) for frame in frame_list]
+                        )
                     sampled_frames = resized_frames
 
                 if semantic_images_np is not None:
-                    semantic_images_np = np.stack([
-                        resize_and_center_crop(image, width, height)
-                        for image in semantic_images_np
-                    ], axis=0)
-                
+                    semantic_images_np = np.stack(
+                        [
+                            resize_and_center_crop(image, width, height)
+                            for image in semantic_images_np
+                        ],
+                        axis=0,
+                    )
+
                 reference_image = semantic_images_np
                 reference_image2 = None
                 condition_images = None
                 semantic_images = None
-                video_sample_frames=sampled_frames
+                video_sample_frames = sampled_frames
 
-        latent_target_length = (video_length - 1) // self.vae_temporal_compression_ratio + 1
+        latent_target_length = (
+            video_length - 1
+        ) // self.vae_temporal_compression_ratio + 1
 
         if task_type == "t2v":
             multitask_mask, mask_type = get_multitask_mask_t2v(latent_target_length)
         elif task_type == "i2v":
             multitask_mask, mask_type = get_multitask_mask_i2v(latent_target_length)
         elif task_type == "interpolation":
-            multitask_mask, mask_type = get_multitask_mask_interpolation(latent_target_length)
+            multitask_mask, mask_type = get_multitask_mask_interpolation(
+                latent_target_length
+            )
         elif task_type == "reference2v":
             num_imgs = [len(ref_image_paths)]
             multitask_mask, mask_type = get_multitask_mask_reference2v(
@@ -1514,11 +1811,15 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         elif task_type == "tiv2v":
             multitask_mask, mask_type = get_multitask_mask_tiv2v(latent_target_length)
         else:
-            raise ValueError(f"Failed to build multitask_mask for task_type={task_type}")
-        
-        latent_target_length, latent_height, latent_width = self.get_latent_size(video_length, height, width)
+            raise ValueError(
+                f"Failed to build multitask_mask for task_type={task_type}"
+            )
+
+        latent_target_length, latent_height, latent_width = self.get_latent_size(
+            video_length, height, width
+        )
         n_tokens = latent_target_length * latent_height * latent_width
-        
+
         return {
             "task_type": task_type,
             "mask_type": mask_type,
@@ -1538,9 +1839,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             "latent_width": latent_width,
             "n_tokens": n_tokens,
             "multitask_mask": multitask_mask,
-            
         }
-
 
     @torch.no_grad()
     def __call__(
@@ -1560,9 +1859,9 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         output_type: Optional[str] = "pt",
         return_dict: bool = True,
         enable_vae_tile_parallelism: bool = True,
-        task_type = 't2v',
-        only_give_text = False,
-        deepstack=[8,16,24],
+        task_type="t2v",
+        only_give_text=False,
+        deepstack=[8, 16, 24],
         setclip=True,
         condition_videos=None,
         condition_video_latents=None,
@@ -1618,7 +1917,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             ```
         """
         num_videos_per_prompt = 1
-        target_resolution = '480p'
+        target_resolution = "480p"
 
         if guidance_scale is None:
             guidance_scale = self.config.guidance_scale
@@ -1634,23 +1933,24 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             assert self.transformer.config.guidance_embed
         else:
             assert not self.transformer.config.guidance_embed
-        
+
         device = self.execution_device
 
-        with auto_offload_model(self.vae, self.execution_device, enabled=self.enable_offloading):
+        with auto_offload_model(
+            self.vae, self.execution_device, enabled=self.enable_offloading
+        ):
             task_inputs = self.get_task_specific_input(
                 prompt=prompt,
                 task_type=task_type,
                 aspect_ratio=aspect_ratio,
-
                 condition_videos=condition_videos,
                 condition_video_latents=condition_video_latents,
                 ref_image_paths=ref_image_paths,
                 video_length=video_length,
                 target_resolution=target_resolution,
-                device=device
+                device=device,
             )
-        
+
         task_type = task_inputs["task_type"]
         prompt = task_inputs["prompt"]
 
@@ -1701,9 +2001,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             if dist.is_initialized() and get_parallel_state().sp_enabled:
                 obj_list = [prompt]
                 # not use group_src to support old PyTorch
-                group_src_rank = dist.get_global_rank(
-                    get_parallel_state().sp_group, 0
-                )
+                group_src_rank = dist.get_global_rank(get_parallel_state().sp_group, 0)
                 dist.broadcast_object_list(
                     obj_list,
                     src=group_src_rank,
@@ -1730,7 +2028,9 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             if dist.is_initialized():
                 obj_list = [seed]
                 group_src_rank = dist.get_global_rank(get_parallel_state().sp_group, 0)
-                dist.broadcast_object_list(obj_list, src=group_src_rank, group=get_parallel_state().sp_group)
+                dist.broadcast_object_list(
+                    obj_list, src=group_src_rank, group=get_parallel_state().sp_group
+                )
                 seed = obj_list[0]
 
         if generator is None and seed is not None:
@@ -1749,7 +2049,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
 
         if get_rank() == 0:
             print(
-                '\n'
+                "\n"
                 f"{'=' * 60}\n"
                 f"🎬  HunyuanVideo Generation Task\n"
                 f"{'-' * 60}\n"
@@ -1763,7 +2063,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                 f"Shift:                     {flow_shift}\n"
                 f"Seed:                      {seed}\n"
                 f"Video Resolution:          {width} x {height}\n"
-                f'Attn mode:                 {self.transformer.attn_mode}\n'
+                f"Attn mode:                 {self.transformer.attn_mode}\n"
                 f"Transformer dtype:         {self.transformer.dtype}\n"
                 f"Sampling Steps:            {num_inference_steps}\n"
                 f"Use Meanflow:              {self.use_meanflow}\n"
@@ -1771,14 +2071,18 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                 f"Setclip:                   {setclip}\n"
                 f"Only Give Text:            {only_give_text}\n"
                 f"{'=' * 60}"
-                '\n'
+                "\n"
             )
 
-        with auto_offload_model(self.text_encoder, self.execution_device, enabled=self.enable_offloading):
+        with auto_offload_model(
+            self.text_encoder, self.execution_device, enabled=self.enable_offloading
+        ):
             if task_type in {"editing", "tiv2v"}:
                 nframes = None
                 if condition_video_latents is not None:
-                    num_video_frames = (condition_video_latents.shape[2] - 1) * self.vae_temporal_compression_ratio + 1
+                    num_video_frames = (
+                        condition_video_latents.shape[2] - 1
+                    ) * self.vae_temporal_compression_ratio + 1
                     if num_video_frames >= 24 * 4:
                         nframes = 8
                     elif num_video_frames >= 24 * 3:
@@ -1826,7 +2130,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                     data_type="video",
                     task_type=task_type,
                     semantic_images=semantic_images,
-                    only_give_text = only_give_text,
+                    only_give_text=only_give_text,
                     deepstack=deepstack,
                     setclip=setclip,
                 )
@@ -1848,12 +2152,11 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                     data_type="video",
                     task_type=task_type,
                     reference2v_task=(task_type == "reference2v"),
-                    all_condition_pils = condition_images,
-                    only_give_text = only_give_text,
+                    all_condition_pils=condition_images,
+                    only_give_text=only_give_text,
                     deepstack=deepstack,
                     setclip=setclip,
                 )
-
 
         # there is no second encoder
         prompt_embeds_2 = None
@@ -1863,7 +2166,9 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
 
         extra_kwargs = {}
         if self.config.glyph_byT5_v2:
-            with auto_offload_model(self.byt5_model, self.execution_device, enabled=self.enable_offloading):
+            with auto_offload_model(
+                self.byt5_model, self.execution_device, enabled=self.enable_offloading
+            ):
                 extra_kwargs = self._prepare_byt5_embeddings(prompt, device)
 
         if self.do_classifier_free_guidance:
@@ -1875,7 +2180,9 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             if prompt_mask_2 is not None:
                 prompt_mask_2 = torch.cat([negative_prompt_mask_2, prompt_mask_2])
             if deepstack_hidden_states is not None:
-                deepstack_hidden_states = torch.cat([negative_deepstack_hidden_states, deepstack_hidden_states])
+                deepstack_hidden_states = torch.cat(
+                    [negative_deepstack_hidden_states, deepstack_hidden_states]
+                )
 
         extra_set_timesteps_kwargs = self.prepare_extra_func_kwargs(
             self.scheduler.set_timesteps, {"n_tokens": n_tokens}
@@ -1903,30 +2210,48 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         cond_latents = self._prepare_cond_latents(
             task_type, cond_latents, latents, multitask_mask
         )
-        with auto_offload_model(self.vision_encoder, self.execution_device, enabled=self.enable_offloading):
+        with auto_offload_model(
+            self.vision_encoder, self.execution_device, enabled=self.enable_offloading
+        ):
             vision_states = self._prepare_vision_states(
-                reference_image, target_resolution, latents, device, reference_image2=reference_image2
+                reference_image,
+                target_resolution,
+                latents,
+                device,
+                reference_image2=reference_image2,
             )
 
         extra_step_kwargs = self.prepare_extra_func_kwargs(
-            self.scheduler.step, {"generator": generator, "eta": kwargs.get("eta", 0.0)},
+            self.scheduler.step,
+            {"generator": generator, "eta": kwargs.get("eta", 0.0)},
         )
 
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
-        cache_helper = getattr(self, 'cache_helper', None)
+        cache_helper = getattr(self, "cache_helper", None)
         if cache_helper is not None:
             cache_helper.clear_states()
 
-        with self.progress_bar(total=num_inference_steps) as progress_bar, auto_offload_model(self.transformer, self.execution_device, enabled=self.enable_offloading):
+        with (
+            self.progress_bar(total=num_inference_steps) as progress_bar,
+            auto_offload_model(
+                self.transformer, self.execution_device, enabled=self.enable_offloading
+            ),
+        ):
             for i, t in enumerate(timesteps):
                 if cache_helper is not None:
                     cache_helper.cur_timestep = i
                 latents_concat = torch.concat([latents, cond_latents], dim=1)
-                latent_model_input = torch.cat([latents_concat] * 2) if self.do_classifier_free_guidance else latents_concat
+                latent_model_input = (
+                    torch.cat([latents_concat] * 2)
+                    if self.do_classifier_free_guidance
+                    else latents_concat
+                )
 
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = self.scheduler.scale_model_input(
+                    latent_model_input, t
+                )
 
                 t_expand = t.repeat(latent_model_input.shape[0])
                 if self.use_meanflow:
@@ -1949,7 +2274,11 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                     else None
                 )
 
-                with torch.autocast(device_type="cuda", dtype=self.target_dtype, enabled=self.autocast_enabled):
+                with torch.autocast(
+                    device_type="cuda",
+                    dtype=self.target_dtype,
+                    enabled=self.autocast_enabled,
+                ):
                     output = self.transformer(
                         latent_model_input,
                         t_expand,
@@ -1968,7 +2297,9 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
 
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + self.guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     noise_pred = rescale_noise_cfg(
@@ -1978,10 +2309,14 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                     )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 # Update progress bar
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if i == len(timesteps) - 1 or (
+                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                ):
                     if progress_bar is not None:
                         progress_bar.update()
 
@@ -1995,16 +2330,36 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                     f"Only support latents with shape (b, c, h, w) or (b, c, f, h, w), but got {latents.shape}."
                 )
 
-            if hasattr(self.vae.config, "shift_factor") and self.vae.config.shift_factor:
-                latents = latents / self.vae.config.scaling_factor + self.vae.config.shift_factor
+            if (
+                hasattr(self.vae.config, "shift_factor")
+                and self.vae.config.shift_factor
+            ):
+                latents = (
+                    latents / self.vae.config.scaling_factor
+                    + self.vae.config.shift_factor
+                )
             else:
                 latents = latents / self.vae.config.scaling_factor
 
-            if enable_vae_tile_parallelism and hasattr(self.vae, 'enable_tile_parallelism'):
+            if enable_vae_tile_parallelism and hasattr(
+                self.vae, "enable_tile_parallelism"
+            ):
                 self.vae.enable_tile_parallelism()
 
-            with torch.autocast(device_type="cuda", dtype=self.vae_dtype, enabled=self.vae_autocast_enabled), auto_offload_model(self.vae, self.execution_device, enabled=self.enable_offloading), self.vae.memory_efficient_context():
-                video_frames = self.vae.decode(latents, return_dict=False, generator=generator)[0]
+            with (
+                torch.autocast(
+                    device_type="cuda",
+                    dtype=self.vae_dtype,
+                    enabled=self.vae_autocast_enabled,
+                ),
+                auto_offload_model(
+                    self.vae, self.execution_device, enabled=self.enable_offloading
+                ),
+                self.vae.memory_efficient_context(),
+            ):
+                video_frames = self.vae.decode(
+                    latents, return_dict=False, generator=generator
+                )[0]
 
             if video_frames is not None:
                 video_frames = (video_frames / 2 + 0.5).clamp(0, 1).cpu().float()
@@ -2038,7 +2393,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
     ):
         """
         Apply inference optimizations to transformer based on infer_state.
-        
+
         Args:
             infer_state: Optional InferState object containing optimization settings.
             enable_offloading: Whether to enable CPU offloading.
@@ -2046,12 +2401,14 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             overlap_group_offloading: Whether to use overlapping group offloading.
         """
         if infer_state is not None:
-
             if infer_state.use_fp8_gemm:
                 from angelslim.compressor.diffusion import DynamicDiTQuantizer
+
                 quant_type = infer_state.quant_type
                 include_patterns = infer_state.include_patterns
-                quantizer = DynamicDiTQuantizer(quant_type=quant_type, include_patterns=include_patterns)
+                quantizer = DynamicDiTQuantizer(
+                    quant_type=quant_type, include_patterns=include_patterns
+                )
                 quantizer.convert_linear(self.transformer)
 
             if infer_state.enable_torch_compile:
@@ -2061,58 +2418,81 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
 
             # Apply sageattn if enabled
             if infer_state.enable_sageattn:
-                self.transformer.set_attn_mode('sageattn')
-            
+                self.transformer.set_attn_mode("sageattn")
+
             # Apply cache if enabled
             if infer_state.enable_cache:
                 if not is_angelslim_available():
-                    raise RuntimeError("Please install angelslim==0.2.1 via `pip install angelslim==0.2.1` to enable cache.")
-                from angelslim.compressor.diffusion import DeepCacheHelper, TeaCacheHelper, TaylorCacheHelper
-                no_cache_steps = list(range(0, infer_state.cache_start_step)) + list(range(infer_state.cache_start_step, infer_state.cache_end_step, infer_state.cache_step_interval)) + list(range(infer_state.cache_end_step, infer_state.total_steps))
+                    raise RuntimeError(
+                        "Please install angelslim==0.2.1 via `pip install angelslim==0.2.1` to enable cache."
+                    )
+                from angelslim.compressor.diffusion import (
+                    DeepCacheHelper,
+                    TeaCacheHelper,
+                    TaylorCacheHelper,
+                )
+
+                no_cache_steps = (
+                    list(range(0, infer_state.cache_start_step))
+                    + list(
+                        range(
+                            infer_state.cache_start_step,
+                            infer_state.cache_end_step,
+                            infer_state.cache_step_interval,
+                        )
+                    )
+                    + list(range(infer_state.cache_end_step, infer_state.total_steps))
+                )
                 cache_type = infer_state.cache_type
-                if cache_type == 'deepcache':
+                if cache_type == "deepcache":
                     no_cache_block_id = {"double_blocks": infer_state.no_cache_block_id}
                     self.cache_helper = DeepCacheHelper(
                         double_blocks=self.transformer.double_blocks,
                         no_cache_steps=no_cache_steps,
                         no_cache_block_id=no_cache_block_id,
                     )
-                elif cache_type == 'teacache':
+                elif cache_type == "teacache":
                     self.cache_helper = TeaCacheHelper(
                         double_blocks=self.transformer.double_blocks,
                         no_cache_steps=no_cache_steps,
                     )
-                elif cache_type == 'taylorcache':
+                elif cache_type == "taylorcache":
                     self.cache_helper = TaylorCacheHelper(
                         double_blocks=self.transformer.double_blocks,
                         no_cache_steps=no_cache_steps,
                     )
                 else:
-                    raise ValueError(f"Unknown cache type: {cache_type}. Only 'deepcache', 'teacache', 'taylorcache' are supported.")
+                    raise ValueError(
+                        f"Unknown cache type: {cache_type}. Only 'deepcache', 'teacache', 'taylorcache' are supported."
+                    )
                 self.cache_helper.enable()
             else:
                 self.cache_helper = None
         else:
             self.cache_helper = None
-        
+
         # Set enable_offloading
         self.enable_offloading = enable_offloading
-        
+
         # Apply group offloading if enabled
         if enable_group_offloading:
-            assert enable_offloading, "enable_group_offloading requires enable_offloading to be True"
+            assert enable_offloading, (
+                "enable_group_offloading requires enable_offloading to be True"
+            )
             group_offloading_kwargs = {
-                'onload_device': torch.device('cuda'),
-                'num_blocks_per_group': 1 if overlap_group_offloading else 4,
+                "onload_device": torch.device("cuda"),
+                "num_blocks_per_group": 1 if overlap_group_offloading else 4,
             }
             if overlap_group_offloading:
-                group_offloading_kwargs['use_stream'] = True
+                group_offloading_kwargs["use_stream"] = True
             self.transformer.enable_group_offload(**group_offloading_kwargs)
-
 
     @staticmethod
     def _load_text_encoder_ckpt(text_encoder, ckpt_path):
         """Load a fine-tuned text encoder checkpoint into the text encoder model."""
+        import gc
+
+        loguru.logger.info(f"Loading text encoder weights from {ckpt_path}")
         if ckpt_path.endswith(".safetensors"):
             from safetensors import safe_open
 
@@ -2127,11 +2507,28 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             te_weights = te_data
         if isinstance(te_weights, dict):
             te_weights = {k: v for k, v in te_weights.items() if k != "__metadata__"}
-        text_encoder.model.load_state_dict(te_weights, strict=True)
+        loguru.logger.info(f"Applying text encoder weights ({len(te_weights)} keys)")
+        missing, unexpected = text_encoder.model.load_state_dict(
+            te_weights, strict=False
+        )
+        if missing:
+            loguru.logger.warning(f"Missing keys in text encoder: {missing[:10]}")
+        if unexpected:
+            loguru.logger.warning(f"Unexpected keys in text encoder: {unexpected[:10]}")
+        del te_weights
+        gc.collect()
         loguru.logger.info(f"Loaded text encoder checkpoint from {ckpt_path}")
 
     @classmethod
-    def create_pipeline(cls, pretrained_model_name_or_path, transformer_dtype=torch.bfloat16, device=None, transformer_init_device=None, pipeline_config='omniweaving', **kwargs):
+    def create_pipeline(
+        cls,
+        pretrained_model_name_or_path,
+        transformer_dtype=torch.bfloat16,
+        device=None,
+        transformer_init_device=None,
+        pipeline_config="omniweaving",
+        **kwargs,
+    ):
         # use snapshot download here to get it working from from_pretrained
 
         if not os.path.isdir(pretrained_model_name_or_path):
@@ -2148,39 +2545,54 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             cached_folder = pretrained_model_name_or_path
 
         if device is None:
-            device = torch.device('cuda')
-        
+            device = torch.device("cuda")
+
         if transformer_init_device is None:
             transformer_init_device = device
 
         from_pretrain_kwargs = {
-            'pretrained_model_name_or_path': os.path.join(cached_folder, "transformer"),
+            "pretrained_model_name_or_path": os.path.join(cached_folder, "transformer"),
         }
 
         vae_inference_config = cls.get_vae_inference_config()
         transformer = HunyuanVideo_1_5_DiffusionTransformer.from_pretrained(
             **from_pretrain_kwargs,
-            torch_dtype=transformer_dtype, 
+            torch_dtype=transformer_dtype,
             low_cpu_mem_usage=True,
         ).to(transformer_init_device)
 
         vae = hunyuanvideo_15_vae.AutoencoderKLConv3D.from_pretrained(
-            os.path.join(cached_folder, "vae"), 
-            torch_dtype=vae_inference_config['dtype']
+            os.path.join(cached_folder, "vae"),
+            torch_dtype=vae_inference_config["dtype"],
         ).to(device)
-        vae.set_tile_sample_min_size(vae_inference_config['sample_size'], vae_inference_config['tile_overlap_factor'])
-        scheduler = FlowMatchDiscreteScheduler.from_pretrained(os.path.join(cached_folder, "scheduler"))
+        vae.set_tile_sample_min_size(
+            vae_inference_config["sample_size"],
+            vae_inference_config["tile_overlap_factor"],
+        )
+        scheduler = FlowMatchDiscreteScheduler.from_pretrained(
+            os.path.join(cached_folder, "scheduler")
+        )
 
-        byt5_kwargs, prompt_format = cls._load_byt5(cached_folder, True, 256, device=device)
-        text_encoder, text_encoder_2 = cls._load_text_encoders(cached_folder, device=device)
-        
-        text_encoder_ckpt = os.path.join(cached_folder, "text_encoder", "ckpt", "text_encoder_model.safetensors")
+        byt5_kwargs, prompt_format = cls._load_byt5(
+            cached_folder, True, 256, device=device
+        )
+        text_encoder, text_encoder_2 = cls._load_text_encoders(
+            cached_folder, device=device
+        )
+
+        text_encoder_ckpt = os.path.join(
+            cached_folder, "text_encoder", "ckpt", "text_encoder_model.safetensors"
+        )
         if os.path.exists(text_encoder_ckpt):
-            loguru.logger.info(f"Loading text encoder checkpoint from {text_encoder_ckpt}")
+            loguru.logger.info(
+                f"Loading text encoder checkpoint from {text_encoder_ckpt}"
+            )
             cls._load_text_encoder_ckpt(text_encoder, text_encoder_ckpt)
             loguru.logger.info(f"Text encoder checkpoint loaded successfully.")
         else:
-            loguru.logger.warning(f"Text encoder checkpoint not found at {text_encoder_ckpt}. Using default text encoder.")
+            loguru.logger.warning(
+                f"Text encoder checkpoint not found at {text_encoder_ckpt}. Using default text encoder."
+            )
         vision_encoder = cls._load_vision_encoder(cached_folder, device=device)
 
         pipeline = cls(
@@ -2194,7 +2606,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             byt5_tokenizer=byt5_kwargs["byt5_tokenizer"],
             byt5_max_length=byt5_kwargs["byt5_max_length"],
             prompt_format=prompt_format,
-            execution_device='cuda',
+            execution_device="cuda",
             vision_encoder=vision_encoder,
             enable_offloading=False,
             **PIPELINE_CONFIGS[pipeline_config],
@@ -2209,13 +2621,13 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
         GB = 1024 * 1024 * 1024
         if memory_limitation < 60 * GB:
             return {
-                'enable_offloading': True,
-                'enable_group_offloading': True,
+                "enable_offloading": True,
+                "enable_group_offloading": True,
             }
         else:
             return {
-                'enable_offloading': True,
-                'enable_group_offloading': False,
+                "enable_offloading": True,
+                "enable_group_offloading": False,
             }
 
     @staticmethod
@@ -2231,24 +2643,27 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             sample_size = 128
             tile_overlap_factor = 0.25
             dtype = torch.float16
-        return {'sample_size': sample_size, 'tile_overlap_factor': tile_overlap_factor, 'dtype': dtype}
-
+        return {
+            "sample_size": sample_size,
+            "tile_overlap_factor": tile_overlap_factor,
+            "dtype": dtype,
+        }
 
     @classmethod
     def _load_text_encoders(cls, pretrained_model_path, device):
-        text_encoder_path = f'{pretrained_model_path}/text_encoder/llm'
+        text_encoder_path = f"{pretrained_model_path}/text_encoder/llm"
         if not os.path.exists(text_encoder_path):
             msg = f"{text_encoder_path} not found. Please refer to checkpoints-download.md to download the text encoder checkpoints."
             loguru.logger.error(msg)
             raise FileNotFoundError(msg)
         text_encoder = TextEncoder(
-            text_encoder_type='llm',
-            tokenizer_type='llm',
+            text_encoder_type="llm",
+            tokenizer_type="llm",
             text_encoder_path=text_encoder_path,
             max_length=1000,
             text_encoder_precision="fp16",
-            prompt_template=PROMPT_TEMPLATE['li-dit-encode-image-json'],
-            prompt_template_video=PROMPT_TEMPLATE['li-dit-encode-video-json'],
+            prompt_template=PROMPT_TEMPLATE["li-dit-encode-image-json"],
+            prompt_template_video=PROMPT_TEMPLATE["li-dit-encode-video-json"],
             hidden_state_skip_layer=2,
             apply_final_norm=False,
             reproduce=False,
@@ -2261,7 +2676,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
 
     @classmethod
     def _load_vision_encoder(cls, pretrained_model_name_or_path, device):
-        vision_encoder_path = f'{pretrained_model_name_or_path}/vision_encoder/siglip'
+        vision_encoder_path = f"{pretrained_model_name_or_path}/vision_encoder/siglip"
         if not os.path.exists(vision_encoder_path):
             msg = f"{vision_encoder_path} not found. Please refer to checkpoints-download.md to download the vision encoder checkpoints."
             loguru.logger.error(msg)

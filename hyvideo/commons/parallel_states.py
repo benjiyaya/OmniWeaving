@@ -15,10 +15,16 @@
 # See the License for the specific language governing permissions and limitations under the License.
 
 import os
+import sys
 from dataclasses import dataclass
 
 import torch.distributed as dist
 from torch.distributed.device_mesh import init_device_mesh
+
+
+def _is_windows_single_gpu(world_size):
+    return sys.platform == "win32" and world_size == 1
+
 
 @dataclass
 class ParallelDims:
@@ -36,28 +42,39 @@ class ParallelDims:
 
     def build_mesh(self, device_type):
         if self.dp_replicate == -1:
-            assert self.world_size % 8 == 0, "world_size must be divisible by 8 for dp_replicate==-1"
+            assert self.world_size % 8 == 0, (
+                "world_size must be divisible by 8 for dp_replicate==-1"
+            )
             self.dp_replicate = self.world_size // 8
         assert self.world_size % self.sp == 0, "world_size must be divisible by sp"
-        assert self.world_size % self.dp_replicate == 0, "world_size must be divisible by dp_replicate"
+        assert self.world_size % self.dp_replicate == 0, (
+            "world_size must be divisible by dp_replicate"
+        )
 
-        fsdp_shard = self.world_size // self.dp_replicate 
+        if _is_windows_single_gpu(self.world_size):
+            self.world_mesh = None
+            self.fsdp_mesh = None
+            self.sp_rank = 0
+            self.sp_group = None
+            return
+
+        fsdp_shard = self.world_size // self.dp_replicate
 
         mesh = init_device_mesh(
             device_type,
             [self.world_size // self.sp, self.sp],
-            mesh_dim_names=["dp", "sp"]
+            mesh_dim_names=["dp", "sp"],
         )
         self.world_mesh = mesh
         self.fsdp_mesh = init_device_mesh(
-            device_type, 
-            [self.dp_replicate, fsdp_shard], 
-            mesh_dim_names=["dp_replicate", "fsdp_shard"]
+            device_type,
+            [self.dp_replicate, fsdp_shard],
+            mesh_dim_names=["dp_replicate", "fsdp_shard"],
         )
 
         if self.sp_enabled:
-            self.sp_rank = mesh['sp'].get_local_rank()
-            self.sp_group = mesh['sp'].get_group()
+            self.sp_rank = mesh["sp"].get_local_rank()
+            self.sp_group = mesh["sp"].get_group()
         else:
             self.sp_rank = dist.get_rank()
             self.sp_group = None
@@ -70,13 +87,15 @@ class ParallelDims:
 
     @property
     def sp_mesh(self):
-        return self.world_mesh['sp']
+        return self.world_mesh["sp"]
 
     @property
     def dp_enabled(self):
         return (self.world_size // self.sp) > 1
 
+
 __parallel_dims = None
+
 
 def initialize_parallel_state(
     sp: int = 1,
@@ -85,6 +104,7 @@ def initialize_parallel_state(
     global __parallel_dims
     __parallel_dims = ParallelDims(sp=sp, dp_replicate=dp_replicate)
     return __parallel_dims
+
 
 def get_parallel_state():
     if __parallel_dims is None:
