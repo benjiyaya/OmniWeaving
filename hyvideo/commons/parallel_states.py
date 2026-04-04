@@ -74,7 +74,7 @@ class ParallelDims:
 
     @property
     def dp_enabled(self):
-        return self.sp > 1
+        return (self.world_size // self.sp) > 1
 
 __parallel_dims = None
 

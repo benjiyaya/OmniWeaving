@@ -70,11 +70,10 @@ and [model weights](https://huggingface.co/tencent/HY-OmniWeaving) of OmniWeavin
   - [✅] Inference Code
   - [✅] Model Checkpoints
   - [✅] Training Data Construction Code
-  - [TODO] Training Example Code
+  - [✅] Training Example Code
 - **IntelligentVBench**
   - [✅] Test cases
   - [✅] Evaluation Code
-  - [TODO] Reference Inference Scripts
   
 ## 📋 Table of Contents
 - [🔥🔥🔥 News](#news)
@@ -85,8 +84,9 @@ and [model weights](https://huggingface.co/tencent/HY-OmniWeaving) of OmniWeavin
 - [🛠 Preparation](#preparation)
 - [🔑 Inference](#inference)
 - [🗂 Training Data Construction](#training-data-construction)
+- [🎓 Training](#training)
 - [📊 Evaluation on IntelligentVBench](#evaluation-on-intelligentvbench)
-- [🎬 Examples](#examples)
+- [🎬 Qualitative Examples](#examples)
 - [📚 Citation](#citation)
 - [🙏 Acknowledgements](#acknowledgements)
 
@@ -582,6 +582,100 @@ A **Multimodal Composition Task**, where the inputs contain multiple reference i
 | 9 | `step9_make_arrow.py` | Export valid training data to Arrow format. |
 
 
+<a id="training"></a>
+
+## 🎓 Training
+
+Following HunyuanVideo-1.5, OmniWeaving is trained using the **Muon optimizer**, which accelerates convergence and improves training stability. Below we provide a simple multi-task training example to illustrate how to perform multi-task mixed training on OmniWeaving. See [`train.py`](train.py) for the full implementation.
+Here is how to use the training script (`train.py`):
+
+#### 1. Implement Your DataLoaders
+
+Replace the `create_dummy_dataloader*()` functions in `train.py` with your own implementations. Each dataset's `__getitem__` method should return a single sample. OmniWeaving supports **multi-task training** with different dataloader types mapped to different tasks:
+
+| Dataloader | Task | Description |
+|------------|------|-------------|
+| `create_dummy_dataloader1` | `t2v` / `i2v` | Text-to-video and image-to-video |
+| `create_dummy_dataloader2` | `multi_imgs_to_v` | Interleaved Text-and-Multi-Image-to-Video |
+| `create_dummy_dataloader3` | `key_frames_to_v` | Key-frames-to-Video |
+| `create_dummy_dataloader4` | `v2v` | Video-to-video editing |
+| `create_dummy_dataloader5` | `tiv2v` | Text-Image-Video-to-Video |
+
+**Data fields:**
+
+| Field | Used By | Type | Description |
+|-------|---------|------|-------------|
+| `"pixel_values"` | All | `torch.Tensor` | Pixels in `[-1, 1]` with the shape of `[C, F, H, W]` (F must be `4n+1`) |
+| `"text"` | All | `str` | Text prompt |
+| `"data_type"` | All | `str` | `"video"` |
+| `"latents"` | All | `torch.Tensor` | Pre-encoded VAE latents (skips VAE encoding) |
+| `"byt5_text_ids"` | All | `torch.LongTensor` | Pre-tokenized byT5 input ids |
+| `"byt5_text_mask"` | All | `torch.LongTensor` | Pre-tokenized byT5 attention mask |
+| `"condition"` | `multi_imgs_to_v`, `key_frames_to_v` | `list[PIL.Image]` | Condition images (subject references or key frames) |
+| `"frame_id"` | `key_frames_to_v` | `list[int]` | Each key-frame image's position in the target video (e.g., `[0, 15]` places two images at frame 0 and frame 15) |
+| `"input_video_path"` | `v2v`, `tiv2v` | `str` | Path to the conditioning video |
+| `"input_video_latents"` | `v2v`, `tiv2v` | `torch.Tensor` | Pre-encoded conditioning video latents |
+| `"input_img"` | `tiv2v` | `list[PIL.Image]` | Reference image(s) for image conditioning |
+
+See the `create_dummy_dataloader*()` functions in [`train.py`](train.py) for detailed format documentation and examples.
+
+#### 2. Run Training
+
+**Single GPU:**
+```bash
+python train.py --pretrained_model_root <path_to_pretrained_model> --dataloader_probs <task_probs> [other args]
+```
+
+**Multi-GPU:**
+```bash
+N=8
+torchrun --nproc_per_node=$N train.py --pretrained_model_root <path_to_pretrained_model> --dataloader_probs <task_probs> [other args]
+```
+
+**Example:**
+```bash
+torchrun --nproc_per_node=8 train.py \
+  --pretrained_model_root ./ckpts \
+  --learning_rate 1e-5 \
+  --batch_size 1 \
+  --max_steps 10000 \
+  --output_dir ./outputs \
+  --enable_fsdp \
+  --enable_gradient_checkpointing \
+  --sp_size 8 \
+  --dataloader_probs "t2v:0.3,i2v:0.2,key_frames_to_v:0.1,multi_imgs_to_v:0.1,v2v:0.15,tiv2v:0.15"
+```
+
+#### 3. Key Training Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--dataloader_probs` | Multi-task mixing probabilities (e.g., `"t2v:0.3,i2v:0.2,..."`) (required) | **Required** |
+| `--pretrained_model_root` | Path to pretrained model (required) | `ckpts` |
+| `--learning_rate` | Learning rate | 1e-5 |
+| `--batch_size` | Batch size | 1 |
+| `--max_steps` | Maximum training steps | 10000 |
+| `--warmup_steps` | Warmup steps | 500 |
+| `--gradient_accumulation_steps` | Gradient accumulation steps | 1 |
+| `--enable_fsdp` | Enable FSDP for distributed training | true |
+| `--enable_gradient_checkpointing` | Enable gradient checkpointing | true |
+| `--sp_size` | Sequence parallelism size (must divide world_size) | 8 |
+| `--use_muon` | Use Muon optimizer | true |
+| `--resume_from_checkpoint` | Resume from checkpoint directory | None |
+| `--use_lora` | Enable LoRA fine-tuning | false |
+| `--lora_r` | LoRA rank | 8 |
+| `--lora_alpha` | LoRA alpha scaling parameter | 16 |
+| `--lora_dropout` | LoRA dropout rate | 0.0 |
+| `--pretrained_lora_path` | Path to pretrained LoRA adapter | None |
+| `--deepstack` | DeepStacking layer indices for text encoder | 8 16 24 |
+
+#### 4. Monitor Training
+
+- Checkpoints are saved to `output_dir` at intervals specified by `--save_interval`
+- Validation videos are generated at intervals specified by `--validation_interval`
+- Training logs are printed to console at intervals specified by `--log_interval`
+
+
 <a id="evaluation-on-intelligentvbench"></a>
 
 ## 📊 Evaluation on IntelligentVBench
@@ -648,9 +742,44 @@ IntelligentVBench/
     └── TIV2V/                              # Source videos for editing ({index}.mp4)
 ```
 
-**Step 2:** Generate videos for each test case and save as `{index}.mp4` under an output directory.
+**Step 2:** Generate videos for each test case. Each video should be named `{index}.mp4` (using the `index` field from the CSV) and saved under a task-specific output directory. For example:
 
-> **Note:** Reference video generation scripts will be released soon!
+```
+# Implicit I2V (250 videos)
+/path/to/implicit_i2v_videos/
+├── 00001.mp4
+├── 00002.mp4
+├── ...
+└── 00250.mp4
+
+# Interpolative DI2V (250 videos)
+/path/to/interpolative_di2v_videos/
+├── 00001.mp4
+├── 00002.mp4
+├── ...
+└── 00250.mp4
+
+# TIV2V (210 videos)
+/path/to/tiv2v_videos/
+├── 00001.mp4
+├── 00002.mp4
+├── ...
+└── 00210.mp4
+
+# Compositional MI2V — one directory per subject count
+/path/to/subject1_videos/        # 130 videos
+├── 00001.mp4
+├── ...
+└── 00130.mp4
+/path/to/subject2_videos/        # 120 videos
+├── 00001.mp4
+├── ...
+└── 00120.mp4
+/path/to/subject3_videos/        # 70 videos
+├── 00001.mp4
+├── ...
+└── 00070.mp4
+```
 
 **Step 3:** Set your Gemini API credentials in each evaluation script (`evaluate_implicit_i2v.py`, `evaluate_interpolative_di2v.py`, `evaluate_tiv2v.py`, `evaluate_compositional_mi2v.py`). Open the file and fill in the `api_key` and `gemini_url` fields at the top:
 
@@ -734,7 +863,7 @@ python IntelligentVBench/calculate_score_compositional_mi2v.py \
 
 <a id="examples"></a>
 
-## 🎬 Examples
+## 🎬 Qualitative Examples
 
 > For more qualitative examples across all tasks, please refer to our [project page](https://omniweaving.github.io/).
 

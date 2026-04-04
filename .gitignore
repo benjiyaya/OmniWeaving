@@ -175,6 +175,6 @@ hyvideo/utils/rewrite/i2v_env.sh
 /*.sh
 
 # Project specific
-train.py
+ori.md
 generate2.py
 
