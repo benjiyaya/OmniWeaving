@@ -56,7 +56,7 @@ Work done during Kaihang Pan's internship at Tencent Hunyuan
 
 ## 🔥🔥🔥 News
 * 📌 OmniWeaving is developed by the **HunyuanVideo** team and is built upon the latest **[HunyuanVideo-1.5](https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5)** as the backbone. If you find our work useful, please consider giving this repository a star and citing our paper~
-* 🪟 April 5, 2026: This fork adds **Windows 11 support** and a **Gradio Web UI** for easy inference. See [Changes in This Fork](#changes-in-this-fork) for details.
+* 🪟 April 5, 2026: This fork adds **Windows support** and a **Gradio Web UI** for easy inference. See [Changes in This Fork](#changes-in-this-fork) for details.
 * 🚀 April 3, 2026: We release the [code](https://github.com/Tencent-Hunyuan/OmniWeaving) 
 and [model weights](https://huggingface.co/tencent/HY-OmniWeaving).
 * 🏃‍♂️ April 3, 2026: We release the [IntelligentVBench](https://huggingface.co/datasets/midbee/IntelligentVBench).
@@ -70,7 +70,7 @@ and [model weights](https://huggingface.co/tencent/HY-OmniWeaving).
 
 This fork extends the original [Tencent-Hunyuan/OmniWeaving](https://github.com/Tencent-Hunyuan/OmniWeaving) repository with the following additions:
 
-### ✅ Windows 11 Support
+### ✅ Windows Support
 - Full compatibility patches for running OmniWeaving on Windows 11 with single-GPU inference
 - **NCCL workaround**: Windows-compatible fallback in `hyvideo/commons/parallel_states.py` for single-GPU mode
 - **VAE decode fix**: Safe `dist.all_gather` handling in `hyvideo/models/autoencoders/hunyuanvideo_15_vae.py` when no process group is initialized
