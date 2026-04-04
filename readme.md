@@ -56,14 +56,46 @@ Work done during Kaihang Pan's internship at Tencent Hunyuan
 
 ## 🔥🔥🔥 News
 * 📌 OmniWeaving is developed by the **HunyuanVideo** team and is built upon the latest **[HunyuanVideo-1.5](https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5)** as the backbone. If you find our work useful, please consider giving this repository a star and citing our paper~
+* 🪟 April 5, 2026: This fork adds **Windows 11 support** and a **Gradio Web UI** for easy inference. See [Changes in This Fork](#changes-in-this-fork) for details.
 * 🚀 April 3, 2026: We release the [code](https://github.com/Tencent-Hunyuan/OmniWeaving) 
-and [model weights](https://huggingface.co/tencent/HY-OmniWeaving) of OmniWeaving.
+and [model weights](https://huggingface.co/tencent/HY-OmniWeaving).
 * 🏃‍♂️ April 3, 2026: We release the [IntelligentVBench](https://huggingface.co/datasets/midbee/IntelligentVBench).
 * 📖 Mar 26, 2026: We release the OmniWeaving paper on [Arxiv](https://arxiv.org/abs/2603.24458).
 * 👋 Mar 25, 2026: We release the webpage of [OmniWeaving](https://omniweaving.github.io/).
 
 
 <a id="open-source-plan"></a>
+
+## 🔄 Changes in This Fork
+
+This fork extends the original [Tencent-Hunyuan/OmniWeaving](https://github.com/Tencent-Hunyuan/OmniWeaving) repository with the following additions:
+
+### ✅ Windows 11 Support
+- Full compatibility patches for running OmniWeaving on Windows 11 with single-GPU inference
+- **NCCL workaround**: Windows-compatible fallback in `hyvideo/commons/parallel_states.py` for single-GPU mode
+- **VAE decode fix**: Safe `dist.all_gather` handling in `hyvideo/models/autoencoders/hunyuanvideo_15_vae.py` when no process group is initialized
+- Complete setup instructions in [WINDOWS_SETUP_GUIDE.md](WINDOWS_SETUP_GUIDE.md)
+
+### ✅ Gradio Web UI
+- Interactive web interface (`gradio_app.py`) for all 6 task types
+- Dynamic inputs based on selected task (reference images, condition video, etc.)
+- Live generation log streaming with video preview and download
+- Full settings panel: attention mode, offloading, caching, FP8 GEMM, 4-bit quantization, LoRA, and more
+- Run with `python gradio_app.py` → open http://localhost:7777
+
+### ✅ Updated Requirements
+- Added `gradio` and other dependencies to `requirements.txt` for easier installation
+
+### 📋 Summary of Modified Files
+| File | Change |
+|------|--------|
+| `hyvideo/commons/parallel_states.py` | Windows single-GPU fallback for NCCL |
+| `hyvideo/models/autoencoders/hunyuanvideo_15_vae.py` | Safe distributed gather fallback |
+| `hyvideo/pipelines/hunyuan_video_pipeline.py` | Windows compatibility updates |
+| `requirements.txt` | Added Gradio and missing deps |
+| `generate.py` | Windows environment variable handling |
+| `gradio_app.py` | **New** — Full-featured Gradio web UI |
+| `WINDOWS_SETUP_GUIDE.md` | **New** — Complete Windows setup documentation |
 
 ## 📑 Open-source Plan
 - **OmniWeaving**
@@ -78,6 +110,7 @@ and [model weights](https://huggingface.co/tencent/HY-OmniWeaving) of OmniWeavin
 ## 📋 Table of Contents
 - [🔥🔥🔥 News](#news)
 - [📑 Open-source Plan](#open-source-plan)
+- [🔄 Changes in This Fork](#changes-in-this-fork)
 - [📖 Abstract](#abstract)
 - [🏗 Model Architecture](#model-architecture)
 - [🚀 Supported Tasks](#supported-tasks)
