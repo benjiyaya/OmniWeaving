@@ -86,6 +86,11 @@ This fork extends the original [Tencent-Hunyuan/OmniWeaving](https://github.com/
 ### ✅ Updated Requirements
 - Added `gradio` and other dependencies to `requirements.txt` for easier installation
 
+### ✅ Converted FP8 Model
+From the original HuggingFace repo FP32 to FP8
+[https://huggingface.co/benjiaiplayground/HY-OmniWeaving-FP8](https://huggingface.co/benjiaiplayground/HY-OmniWeaving-FP8)
+
+
 ### 📋 Summary of Modified Files
 | File | Change |
 |------|--------|
